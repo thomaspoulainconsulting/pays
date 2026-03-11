@@ -38,7 +38,8 @@ pays/
 │   │   └── ContinentFilter.tsx # Boutons filtre continent
 │   ├── data/
 │   │   ├── countries.ts       # 197 pays (nom FR, variantes, code ISO, continent, capitale)
-│   │   └── continents.ts      # Mapping continent → codes ISO
+│   │   ├── continents.ts      # Mapping continent → codes ISO
+│   │   └── worldPaths.ts      # GENERE par scripts/parse-svg.ts — paths SVG par pays
 │   ├── hooks/
 │   │   ├── useQuizState.ts    # Etat du quiz (trouves, mode, filtre)
 │   │   └── useLocalStorage.ts # Persistence localStorage
@@ -47,6 +48,8 @@ pays/
 │   │   └── matching.ts        # Logique de comparaison reponse/attendu
 │   └── styles/
 │       └── index.css          # Styles globaux + theme dark geopolitique
+├── scripts/
+│   └── parse-svg.ts           # Script Node: extrait les paths du SVG → genere worldPaths.ts
 ├── index.html
 ├── package.json
 ├── tsconfig.json
@@ -59,7 +62,7 @@ pays/
 
 ```typescript
 interface Country {
-  iso: string;            // Code ISO 3166-1 alpha-2 ("FR", "US", "CN")
+  iso: string;            // Code ISO 3166-1 alpha-2 minuscule ("fr", "us", "cn")
   name: string;           // Nom principal FR ("France")
   variants: string[];     // Variantes acceptees (["Republique francaise"])
   capital: string;        // Capitale ("Paris")
@@ -70,7 +73,7 @@ interface Country {
 type Continent = "europe" | "afrique" | "asie" | "amerique" | "oceanie";
 ```
 
-**Source des donnees pays** : les 193 Etats membres de l'ONU + 4 Etats observateurs/reconnus (Kosovo, Taiwan, Palestine, Vatican) = 197 pays. La liste definitive sera constituee a partir des noms officiels en francais de l'ONU. Seuls les pays presents a la fois dans `countries.ts` ET dans le SVG sont jouables.
+**Source des donnees pays** : liste manuellement curee de 197 pays souverains couramment reconnus (193 Etats membres ONU + Kosovo, Taiwan, Palestine, Vatican). Les noms en francais s'appuient sur l'usage courant francophone. `countries.ts` est l'unique source de verite. Seuls les pays presents a la fois dans `countries.ts` ET dans `worldPaths.ts` sont jouables. Tous les codes ISO sont en minuscules.
 
 **Regle continents** : 5 continents (Amerique regroupe intentionnellement Nord et Sud). Chaque pays appartient a exactement un continent. Pour les cas ambigus : Russie → Europe, Turquie → Europe, Egypte → Afrique, Kazakhstan → Asie. Le fichier `countries.ts` fait foi.
 
@@ -94,28 +97,46 @@ Exemple : `"etats unis"` → normalise → `"etats unis"` — compare a `"etats-
 3. Sous chaque bouton : 5 filtres continent (Amerique, Europe, Asie, Afrique, Oceanie)
 4. Le bouton principal = mode monde entier
 
-### Page Quiz (carte + panneau lateral)
+### Page Quiz — Mode Pays
+
+Le champ input est **toujours visible** dans le panneau lateral. Le joueur tape un nom de pays et valide : si le pays existe et n'a pas encore ete trouve, il s'illumine en vert sur la carte. Pas besoin de cliquer un pays d'abord.
 
 | Action | Resultat |
 |---|---|
 | Hover sur pays non trouve | drop-shadow bleu + brightness accrue |
-| Clic sur pays non trouve | Pays selectionne (bordure bleu vif), input focus dans panneau |
+| Clic sur pays non trouve | Flash visuel sur le pays (bordure bleu vif pendant 1s) pour aider a le reperer, mais pas d'input lie |
 | Clic sur pays deja trouve | Pas d'action (pays reste vert avec son nom) |
-| Saisie correcte + Entree | Confettis, pays vert + nom, compteur +1, input vide |
-| Tous les pays trouves | Message de felicitations dans le panneau lateral ("Bravo ! Vous avez trouve tous les pays/capitales !"), confettis prolonges, bouton pour revenir a l'accueil |
-| Saisie incorrecte + Entree | Input shake (animation CSS), le champ reste actif pour re-essayer |
-| Saisie d'un nom de pays en mode capitales (ou inverse) | Traite comme une reponse incorrecte (shake). Pas de message specifique. |
-| Echap | Deselectionne le pays |
+| Saisie correcte + Entree | Confettis, le pays correspondant passe en vert + nom, compteur +1, input vide, la carte scrolle/zoome pour centrer le pays trouve |
+| Saisie d'un nom non reconnu + Entree | Input shake (animation CSS), le champ reste actif |
+| Tous les pays trouves | Message de felicitations dans le panneau lateral ("Bravo !"), confettis prolonges, bouton retour accueil |
+
+### Page Quiz — Mode Capitales
+
+Le joueur doit **cliquer sur un pays** pour le selectionner, puis taper sa capitale.
+
+| Action | Resultat |
+|---|---|
+| Hover sur pays non trouve | drop-shadow bleu + brightness accrue |
+| Clic sur pays non trouve | Pays selectionne (bordure bleu vif), le panneau lateral affiche "Capitale de : [Nom du pays]" + input focus |
+| Clic sur pays deja trouve | Pas d'action (pays reste vert avec son nom) |
+| Saisie correcte + Entree | Confettis, pays vert + nom de la capitale, compteur +1, input vide, pays deselectionne |
+| Saisie incorrecte + Entree | Input shake, le champ reste actif pour re-essayer |
+| Echap | Deselectionne le pays, masque l'input |
+| Tous les capitales trouvees | Message de felicitations, confettis prolonges, bouton retour accueil |
+
+### Interactions carte (communes aux deux modes)
+
+| Action | Resultat |
+|---|---|
 | Molette sur carte | Zoom CSS transform scale (borne 1-8) centre sur curseur |
-| Clic-drag sur carte | Pan (deplacement translateX/Y). Disambiguation clic vs drag : si le curseur bouge de moins de 5px entre mousedown et mouseup, c'est un clic (selection). Au-dela, c'est un drag (pan). |
+| Clic-drag sur carte | Pan (deplacement translateX/Y). Disambiguation clic vs drag : si le curseur bouge de moins de 5px entre mousedown et mouseup, c'est un clic. Au-dela, c'est un drag (pan). |
 | Double-clic sur carte | Reset du zoom et de la position (scale=1, translate=0,0) |
 
 ### Panneau lateral (toujours visible)
 
 - Nom du mode en cours ("Pays — Europe" ou "Capitales — Monde")
-- En mode capitales : le nom du pays selectionne est affiche au-dessus du champ input ("Capitale de : France")
-- Champ input (visible quand un pays est selectionne)
-- Placeholder adapte au mode : "Quel est ce pays ?" / "Quelle est la capitale ?"
+- **Mode pays** : champ input toujours visible, placeholder "Tapez un nom de pays..."
+- **Mode capitales** : champ input visible uniquement quand un pays est selectionne, affiche "Capitale de : [Pays]" au-dessus, placeholder "Quelle est la capitale ?"
 - Compteur : "42 / 197 trouves"
 - Barre de progression visuelle
 - Bouton retour a l'accueil
@@ -165,12 +186,12 @@ interface SavedProgress {
 - **Pays trouve** : transition `fill` 0.5s vers vert, texte fade-in
 - **Barre progression** : transition `width` 0.3s ease
 
-**Typographie** : `Inter` ou `system-ui`
+**Typographie** : pile `system-ui` (pas de font externe a charger). Fallback : `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
 
 ## Carte SVG
 
 - **Source** : Carte SVG open source avec `id` ISO alpha-2 (minuscules) sur chaque `<path>`. Source privilegiee : carte amCharts low-resolution world map SVG (https://www.amcharts.com/svg-maps/?map=world). Si les id ne correspondent pas au format alpha-2, le script `parse-svg.ts` les renommera lors de la generation de `worldPaths.ts`.
-- **Contrat SVG ↔ donnees** : les valeurs `Country.iso` dans `countries.ts` doivent correspondre exactement aux `id` dans `worldPaths.ts`. Un test Vitest verifiera cette correspondance.
+- **Contrat SVG ↔ donnees** : les valeurs `Country.iso` dans `countries.ts` doivent correspondre exactement aux `id` dans `worldPaths.ts`. Le script `parse-svg.ts` affichera un warning pour tout id SVG sans correspondance dans `countries.ts` et vice-versa.
 - **Territoires non-pays** (Groenland, Porto Rico, Guyane francaise, etc.) : presents dans le SVG mais rendus comme des shapes statiques (meme fill que les pays non trouves, pas de hover, pas de clic). Ils ne font pas partie du quiz.
 - **Poids estime** : ~200-400ko brut, ~80ko gzippe
 
@@ -188,7 +209,7 @@ Le SVG n'est PAS importe via `vite-plugin-svgr` (qui genererait un composant mon
    Les pays multi-polygones (USA: mainland + Alaska + Hawaii, France: mainland + overseas, Indonesie, etc.) ont plusieurs entrees dans `paths[]`. Le script `parse-svg.ts` fusionne automatiquement les `<path>` ayant le meme `id` dans le SVG source.
 2. `WorldMap.tsx` itere sur ce tableau et rend un `<g>` par pays contenant un ou plusieurs `<path>`. Les event handlers sont attaches au `<g>` (pas aux path individuels) pour que tout le pays reagisse comme une seule unite.
 3. Chaque `<path>` recoit ses props dynamiques (`fill`, `stroke`, `onClick`, `onMouseEnter`, `onMouseLeave`) en fonction de l'etat du quiz (non trouve / hover / selectionne / trouve)
-4. Un script `scripts/parse-svg.ts` extrait les paths du SVG source et genere `worldPaths.ts`
+4. Le script `scripts/parse-svg.ts` extrait les paths du SVG source et genere `src/data/worldPaths.ts`. C'est un script Node execute une seule fois (ou a chaque changement du SVG source) via `npm run generate-map`. Le fichier genere est committe dans le repo (pas regenere au build).
 
 Ce mecanisme donne un controle total sur chaque pays individuellement tout en restant dans le modele React (pas de manipulation DOM directe).
 
@@ -206,7 +227,7 @@ Ce mecanisme donne un controle total sur chaque pays individuellement tout en re
 
 - Element `<text>` SVG positionne au centre du bounding box du `<path>` correspondant
 - Taille de police adaptative : `font-size` proportionnel a la surface du path (min 6px, max 14px en coordonnees SVG)
-- Pour les tres petits pays (bounding box < 20x20 en coordonnees SVG), le nom est affiche via un `<div>` positionne en absolute au-dessus du curseur au hover (pas de SVG `<title>` car le style n'est pas controlable). Le tooltip disparait au mouseLeave.
+- Pour les tres petits pays (bounding box < 20x20 en coordonnees SVG), le nom est affiche via un `<div>` positionne en absolute au hover. Le positionnement utilise les coordonnees ecran du curseur (event.clientX/Y), pas les coordonnees SVG, pour eviter la complexite de compensation du zoom/pan. Le tooltip disparait au mouseLeave.
 
 ## Contraintes
 
