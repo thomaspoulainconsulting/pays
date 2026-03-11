@@ -190,6 +190,11 @@ export default function WorldMap({
                       ? (e) => onCountryHover?.(wp.id, e)
                       : undefined
                   }
+                  onMouseMove={
+                    isCountry
+                      ? (e) => onCountryHover?.(wp.id, e)
+                      : undefined
+                  }
                   onMouseLeave={
                     isCountry ? () => onCountryHover?.(null) : undefined
                   }

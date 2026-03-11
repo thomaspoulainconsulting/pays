@@ -89,17 +89,19 @@ export default function QuizPage({ mode, continent, onBack }: QuizPageProps) {
     [mode, filteredCountries, found, selectedCountry, markFound, setSelectedCountry]
   );
 
-  // Handle hover for tooltip (small countries)
+  // Handle hover for tooltip
   const handleCountryHover = useCallback(
     (iso: string | null, event?: React.MouseEvent) => {
-      if (!iso || !found.has(iso) || !event) {
+      if (!iso || !event) {
         setTooltip(null);
         return;
       }
       const country = countries.find((c) => c.iso === iso);
       if (country) {
-        const label =
-          mode === "countries" ? country.name : country.capital;
+        const isFound = found.has(iso);
+        const label = isFound
+          ? (mode === "countries" ? country.name : country.capital)
+          : country.name;
         setTooltip({ text: label, x: event.clientX + 12, y: event.clientY - 20 });
       }
     },
