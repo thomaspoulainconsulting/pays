@@ -70,13 +70,16 @@ interface Country {
 type Continent = "europe" | "afrique" | "asie" | "amerique" | "oceanie";
 ```
 
-**Normalisation des reponses** :
+**Regle continents** : 5 continents (Amerique regroupe intentionnellement Nord et Sud). Chaque pays appartient a exactement un continent. Pour les cas ambigus : Russie → Europe, Turquie → Europe, Egypte → Afrique, Kazakhstan → Asie. Le fichier `countries.ts` fait foi.
+
+**Normalisation des reponses** (`normalize.ts`) :
 1. Lowercase
 2. Suppression des accents (NFD + strip diacritics)
-3. Trim des espaces
-4. Comparaison avec le nom principal + toutes les variantes
+3. Suppression des tirets, apostrophes et ponctuation (remplaces par des espaces)
+4. Collapse des espaces multiples + trim
+5. Comparaison du resultat avec le nom principal normalise + toutes les variantes normalisees
 
-Exemple : `"etats unis"` → normalise → match `"etats-unis"` → correct.
+Exemple : `"etats unis"` → normalise → `"etats unis"` — compare a `"etats-unis"` normalise → `"etats unis"` → match → correct.
 
 ## Interactions & Flux utilisateur
 
@@ -95,9 +98,11 @@ Exemple : `"etats unis"` → normalise → match `"etats-unis"` → correct.
 |---|---|
 | Hover sur pays non trouve | drop-shadow bleu + brightness accrue |
 | Clic sur pays non trouve | Pays selectionne (bordure bleu vif), input focus dans panneau |
-| Clic sur pays deja trouve | Pas d'action |
+| Clic sur pays deja trouve | Pas d'action (pays reste vert avec son nom) |
 | Saisie correcte + Entree | Confettis, pays vert + nom, compteur +1, input vide |
-| Saisie incorrecte + Entree | Input shake (animation CSS) |
+| Tous les pays trouves | Message de felicitations dans le panneau lateral ("Bravo ! Vous avez trouve tous les pays/capitales !"), confettis prolonges, bouton pour revenir a l'accueil |
+| Saisie incorrecte + Entree | Input shake (animation CSS), le champ reste actif pour re-essayer |
+| Saisie d'un nom de pays en mode capitales (ou inverse) | Traite comme une reponse incorrecte (shake). Pas de message specifique. |
 | Echap | Deselectionne le pays |
 | Molette sur carte | Zoom CSS transform scale (borne 1-8) centre sur curseur |
 | Clic-drag sur carte | Pan (deplacement translateX/Y) |
@@ -110,6 +115,23 @@ Exemple : `"etats unis"` → normalise → match `"etats-unis"` → correct.
 - Compteur : "42 / 197 trouves"
 - Barre de progression visuelle
 - Bouton retour a l'accueil
+
+### Persistence localStorage
+
+**Schema** :
+```typescript
+interface SavedProgress {
+  countries: string[];  // Liste des codes ISO trouves en mode pays
+  capitals: string[];   // Liste des codes ISO trouves en mode capitales
+}
+```
+
+**Cle** : `"quiz-pays-progress"`
+
+- Une seule cle, pas de segmentation par continent (la progression est globale)
+- Les filtres continent ne font que masquer/afficher des pays sur la carte, ils ne creent pas de sessions separees
+- Au chargement, si la cle n'existe pas ou est corrompue (JSON invalide), on repart de zero sans erreur
+- Mise a jour a chaque bonne reponse (ecriture immediate)
 
 ## Theme visuel
 
@@ -143,10 +165,27 @@ Exemple : `"etats unis"` → normalise → match `"etats-unis"` → correct.
 
 ## Carte SVG
 
-- **Source** : Natural Earth 110m, simplifiee via mapshaper, ou carte SVG open source pre-faite (amCharts ou similaire) avec id ISO alpha-2
+- **Source** : Carte SVG open source avec `id` ISO alpha-2 (minuscules) sur chaque `<path>`. Source privilegiee : carte amCharts low-resolution world map SVG. Si les id ne correspondent pas au format alpha-2, un script de pre-traitement renommera les id avant integration.
+- **Contrat SVG ↔ donnees** : les valeurs `Country.iso` dans `countries.ts` doivent correspondre exactement aux attributs `id` des `<path>` dans le SVG. Un test unitaire verifiera cette correspondance au build.
 - **Poids estime** : ~200-400ko brut, ~80ko gzippe
-- **Integration** : SVG importe comme composant React (vite-plugin-svgr ou inline)
-- **Chaque `<path>`** recoit : `fill`, `stroke`, `className`, `onClick`, `onMouseEnter`, `onMouseLeave` dynamiques
+
+### Mecanisme de rendu SVG
+
+Le SVG n'est PAS importe via `vite-plugin-svgr` (qui genererait un composant monolithique sans controle par path). A la place :
+
+1. Le fichier SVG source est pre-traite en un fichier `worldPaths.ts` contenant un tableau d'objets :
+   ```typescript
+   interface SvgPath {
+     id: string;    // ISO alpha-2, ex: "fr"
+     d: string;     // Attribut "d" du path SVG
+     name?: string; // Nom pour debug
+   }
+   ```
+2. `WorldMap.tsx` itere sur ce tableau et rend chaque `<path>` comme un element React individuel
+3. Chaque `<path>` recoit ses props dynamiques (`fill`, `stroke`, `onClick`, `onMouseEnter`, `onMouseLeave`) en fonction de l'etat du quiz (non trouve / hover / selectionne / trouve)
+4. Un script `scripts/parse-svg.ts` extrait les paths du SVG source et genere `worldPaths.ts`
+
+Ce mecanisme donne un controle total sur chaque pays individuellement tout en restant dans le modele React (pas de manipulation DOM directe).
 
 ### Zoom & Pan
 
@@ -154,8 +193,20 @@ Exemple : `"etats unis"` → normalise → match `"etats-unis"` → correct.
 - Etat `{ scale, translateX, translateY }`
 - Molette → scale (1-8) centre sur curseur
 - Clic-drag → translateX/Y
-- CSS `transform: scale(${s}) translate(${x}px, ${y}px)`
+- Ordre de transformation : `transform: translate(${x}px, ${y}px) scale(${s})`  (translate d'abord, puis scale)
+- Compensation des coordonnees souris : pour convertir les coordonnees ecran en coordonnees SVG, soustraire translateX/Y puis diviser par scale. Formule : `svgX = (clientX - containerLeft - translateX) / scale`
 - Zero dependance externe
+
+### Affichage du nom sur les pays trouves
+
+- Element `<text>` SVG positionne au centre du bounding box du `<path>` correspondant
+- Taille de police adaptative : `font-size` proportionnel a la surface du path (min 6px, max 14px en coordonnees SVG)
+- Pour les tres petits pays (bounding box < 20x20 en coordonnees SVG), le nom est affiche via un tooltip au hover plutot qu'en texte fixe sur la carte
+
+## Contraintes
+
+- **Viewport minimum** : 1024px de large (desktop-first)
+- **canvas-confetti** : dependance production, derniere version stable
 
 ## Hors perimetre (v1)
 
