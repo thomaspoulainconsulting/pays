@@ -4,12 +4,14 @@ interface CountryInputProps {
   placeholder: string;
   onSubmit: (value: string) => boolean; // returns true if correct
   autoFocus?: boolean;
+  focusTrigger?: number;
 }
 
 export default function CountryInput({
   placeholder,
   onSubmit,
   autoFocus = false,
+  focusTrigger = 0,
 }: CountryInputProps) {
   const [value, setValue] = useState("");
   const [shaking, setShaking] = useState(false);
@@ -18,6 +20,10 @@ export default function CountryInput({
   useEffect(() => {
     if (autoFocus) inputRef.current?.focus();
   }, [autoFocus]);
+
+  useEffect(() => {
+    if (focusTrigger > 0) inputRef.current?.focus();
+  }, [focusTrigger]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

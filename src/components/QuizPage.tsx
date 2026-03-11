@@ -26,6 +26,7 @@ export default function QuizPage({ mode, continent, onBack }: QuizPageProps) {
   } = useQuizState(mode, continent);
 
   const [confettiTrigger, setConfettiTrigger] = useState(0);
+  const [focusTrigger, setFocusTrigger] = useState(0);
   const [highlightIso, setHighlightIso] = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<{
     text: string;
@@ -53,6 +54,7 @@ export default function QuizPage({ mode, continent, onBack }: QuizPageProps) {
         // Countries mode: just flash the country
         setHighlightIso(iso);
       }
+      setFocusTrigger((prev) => prev + 1);
     },
     [mode, found, setSelectedCountry]
   );
@@ -115,7 +117,6 @@ export default function QuizPage({ mode, continent, onBack }: QuizPageProps) {
   return (
     <div className="quiz-page">
       <WorldMap
-        mode={mode}
         found={found}
         selectedCountry={selectedCountry}
         onCountryClick={handleCountryClick}
@@ -133,6 +134,7 @@ export default function QuizPage({ mode, continent, onBack }: QuizPageProps) {
         onBack={onBack}
         onEscape={() => setSelectedCountry(null)}
         showInput={showInput}
+        focusTrigger={focusTrigger}
       />
       <ConfettiEffect
         trigger={confettiTrigger}

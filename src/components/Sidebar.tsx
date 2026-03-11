@@ -13,6 +13,7 @@ interface SidebarProps {
   onBack: () => void;
   onEscape?: () => void;
   showInput: boolean;
+  focusTrigger?: number;
 }
 
 export default function Sidebar({
@@ -25,6 +26,7 @@ export default function Sidebar({
   onSubmit,
   onBack,
   showInput,
+  focusTrigger = 0,
 }: SidebarProps) {
   const modeLabel = mode === "countries" ? "Pays" : "Capitales";
   const regionLabel = continent ? continentLabels[continent] : "Monde";
@@ -64,6 +66,7 @@ export default function Sidebar({
               }
               onSubmit={onSubmit}
               autoFocus
+              focusTrigger={focusTrigger}
             />
           )}
 

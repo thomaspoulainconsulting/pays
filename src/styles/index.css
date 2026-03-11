@@ -191,21 +191,6 @@ body {
   pointer-events: none;
 }
 
-.country-label {
-  fill: var(--text-found);
-  text-anchor: middle;
-  dominant-baseline: central;
-  pointer-events: none;
-  font-family: system-ui, sans-serif;
-  font-weight: 600;
-  opacity: 0;
-  transition: opacity 0.5s;
-}
-
-.country-label.visible {
-  opacity: 1;
-}
-
 /* === Sidebar === */
 .sidebar {
   width: 320px;

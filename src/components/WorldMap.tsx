@@ -1,10 +1,8 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { worldPaths, svgViewBox } from "../data/worldPaths";
 import { countries } from "../data/countries";
-import type { QuizMode } from "../data/types";
 
 interface WorldMapProps {
-  mode: QuizMode;
   found: Set<string>;
   selectedCountry: string | null;
   onCountryClick: (iso: string) => void;
@@ -15,43 +13,7 @@ interface WorldMapProps {
 // Known country ISOs for filtering territories
 const countryIsos = new Set(countries.map((c) => c.iso));
 
-// Pre-compute bounding boxes from path data
-function computeBBox(pathStrings: string[]): {
-  cx: number;
-  cy: number;
-  width: number;
-  height: number;
-} {
-  let minX = Infinity,
-    minY = Infinity,
-    maxX = -Infinity,
-    maxY = -Infinity;
-
-  for (const d of pathStrings) {
-    const nums = d.match(/-?\d+\.?\d*/g);
-    if (!nums) continue;
-    for (let i = 0; i < nums.length - 1; i += 2) {
-      const x = parseFloat(nums[i]);
-      const y = parseFloat(nums[i + 1]);
-      if (!isNaN(x) && !isNaN(y)) {
-        minX = Math.min(minX, x);
-        minY = Math.min(minY, y);
-        maxX = Math.max(maxX, x);
-        maxY = Math.max(maxY, y);
-      }
-    }
-  }
-
-  return {
-    cx: (minX + maxX) / 2,
-    cy: (minY + maxY) / 2,
-    width: maxX - minX,
-    height: maxY - minY,
-  };
-}
-
 export default function WorldMap({
-  mode,
   found,
   selectedCountry,
   onCountryClick,
@@ -180,14 +142,6 @@ export default function WorldMap({
     return () => container.removeEventListener("wheel", handler);
   }, []);
 
-  // Get country name for labels
-  const getCountryName = (iso: string): string => {
-    const country = countries.find((c) => c.iso === iso);
-    if (!country) return iso;
-    if (mode === "capitals") return country.capital;
-    return country.name;
-  };
-
   return (
     <div
       ref={containerRef}
@@ -216,12 +170,6 @@ export default function WorldMap({
             ? `country-path${isFound ? " found" : ""}${isSelected ? " selected" : ""}${isFlash ? " flash" : ""}`
             : "territory-path";
 
-          const bbox = isFound ? computeBBox(wp.paths) : null;
-          const fontSize = bbox
-            ? Math.min(14, Math.max(6, Math.min(bbox.width, bbox.height) * 0.3))
-            : 8;
-          const isSmall = bbox ? bbox.width < 20 && bbox.height < 20 : false;
-
           return (
             <g key={wp.id}>
               {wp.paths.map((d, i) => (
@@ -247,16 +195,6 @@ export default function WorldMap({
                   }
                 />
               ))}
-              {isFound && !isSmall && bbox && (
-                <text
-                  className="country-label visible"
-                  x={bbox.cx}
-                  y={bbox.cy}
-                  fontSize={fontSize}
-                >
-                  {getCountryName(wp.id)}
-                </text>
-              )}
             </g>
           );
         })}
