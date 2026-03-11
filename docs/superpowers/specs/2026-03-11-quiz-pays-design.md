@@ -70,6 +70,8 @@ interface Country {
 type Continent = "europe" | "afrique" | "asie" | "amerique" | "oceanie";
 ```
 
+**Source des donnees pays** : les 193 Etats membres de l'ONU + 4 Etats observateurs/reconnus (Kosovo, Taiwan, Palestine, Vatican) = 197 pays. La liste definitive sera constituee a partir des noms officiels en francais de l'ONU. Seuls les pays presents a la fois dans `countries.ts` ET dans le SVG sont jouables.
+
 **Regle continents** : 5 continents (Amerique regroupe intentionnellement Nord et Sud). Chaque pays appartient a exactement un continent. Pour les cas ambigus : Russie → Europe, Turquie → Europe, Egypte → Afrique, Kazakhstan → Asie. Le fichier `countries.ts` fait foi.
 
 **Normalisation des reponses** (`normalize.ts`) :
@@ -105,11 +107,13 @@ Exemple : `"etats unis"` → normalise → `"etats unis"` — compare a `"etats-
 | Saisie d'un nom de pays en mode capitales (ou inverse) | Traite comme une reponse incorrecte (shake). Pas de message specifique. |
 | Echap | Deselectionne le pays |
 | Molette sur carte | Zoom CSS transform scale (borne 1-8) centre sur curseur |
-| Clic-drag sur carte | Pan (deplacement translateX/Y) |
+| Clic-drag sur carte | Pan (deplacement translateX/Y). Disambiguation clic vs drag : si le curseur bouge de moins de 5px entre mousedown et mouseup, c'est un clic (selection). Au-dela, c'est un drag (pan). |
+| Double-clic sur carte | Reset du zoom et de la position (scale=1, translate=0,0) |
 
 ### Panneau lateral (toujours visible)
 
 - Nom du mode en cours ("Pays — Europe" ou "Capitales — Monde")
+- En mode capitales : le nom du pays selectionne est affiche au-dessus du champ input ("Capitale de : France")
 - Champ input (visible quand un pays est selectionne)
 - Placeholder adapte au mode : "Quel est ce pays ?" / "Quelle est la capitale ?"
 - Compteur : "42 / 197 trouves"
@@ -157,7 +161,7 @@ interface SavedProgress {
 
 - **Hover pays** : `transition: filter 0.2s`, `drop-shadow(0 4px 8px rgba(37,99,235,0.3))` + `brightness(1.3)`
 - **Shake input** : keyframe CSS (translation X rapide, 3 oscillations)
-- **Confettis** : `canvas-confetti` depuis le haut, particules multicolores, ~2s
+- **Confettis** : `canvas-confetti` depuis le haut, particules multicolores, ~2s. Confettis de completion : 5s (3 salves successives)
 - **Pays trouve** : transition `fill` 0.5s vers vert, texte fade-in
 - **Barre progression** : transition `width` 0.3s ease
 
@@ -165,8 +169,9 @@ interface SavedProgress {
 
 ## Carte SVG
 
-- **Source** : Carte SVG open source avec `id` ISO alpha-2 (minuscules) sur chaque `<path>`. Source privilegiee : carte amCharts low-resolution world map SVG. Si les id ne correspondent pas au format alpha-2, un script de pre-traitement renommera les id avant integration.
-- **Contrat SVG ↔ donnees** : les valeurs `Country.iso` dans `countries.ts` doivent correspondre exactement aux attributs `id` des `<path>` dans le SVG. Un test unitaire verifiera cette correspondance au build.
+- **Source** : Carte SVG open source avec `id` ISO alpha-2 (minuscules) sur chaque `<path>`. Source privilegiee : carte amCharts low-resolution world map SVG (https://www.amcharts.com/svg-maps/?map=world). Si les id ne correspondent pas au format alpha-2, le script `parse-svg.ts` les renommera lors de la generation de `worldPaths.ts`.
+- **Contrat SVG ↔ donnees** : les valeurs `Country.iso` dans `countries.ts` doivent correspondre exactement aux `id` dans `worldPaths.ts`. Un test Vitest verifiera cette correspondance.
+- **Territoires non-pays** (Groenland, Porto Rico, Guyane francaise, etc.) : presents dans le SVG mais rendus comme des shapes statiques (meme fill que les pays non trouves, pas de hover, pas de clic). Ils ne font pas partie du quiz.
 - **Poids estime** : ~200-400ko brut, ~80ko gzippe
 
 ### Mecanisme de rendu SVG
@@ -176,12 +181,12 @@ Le SVG n'est PAS importe via `vite-plugin-svgr` (qui genererait un composant mon
 1. Le fichier SVG source est pre-traite en un fichier `worldPaths.ts` contenant un tableau d'objets :
    ```typescript
    interface SvgPath {
-     id: string;    // ISO alpha-2, ex: "fr"
-     d: string;     // Attribut "d" du path SVG
-     name?: string; // Nom pour debug
+     id: string;      // ISO alpha-2, ex: "fr"
+     paths: string[]; // Tableau d'attributs "d" (un ou plusieurs pour les pays multi-polygones)
    }
    ```
-2. `WorldMap.tsx` itere sur ce tableau et rend chaque `<path>` comme un element React individuel
+   Les pays multi-polygones (USA: mainland + Alaska + Hawaii, France: mainland + overseas, Indonesie, etc.) ont plusieurs entrees dans `paths[]`. Le script `parse-svg.ts` fusionne automatiquement les `<path>` ayant le meme `id` dans le SVG source.
+2. `WorldMap.tsx` itere sur ce tableau et rend un `<g>` par pays contenant un ou plusieurs `<path>`. Les event handlers sont attaches au `<g>` (pas aux path individuels) pour que tout le pays reagisse comme une seule unite.
 3. Chaque `<path>` recoit ses props dynamiques (`fill`, `stroke`, `onClick`, `onMouseEnter`, `onMouseLeave`) en fonction de l'etat du quiz (non trouve / hover / selectionne / trouve)
 4. Un script `scripts/parse-svg.ts` extrait les paths du SVG source et genere `worldPaths.ts`
 
@@ -192,7 +197,7 @@ Ce mecanisme donne un controle total sur chaque pays individuellement tout en re
 - Conteneur `<div>` avec `overflow: hidden`
 - Etat `{ scale, translateX, translateY }`
 - Molette → scale (1-8) centre sur curseur
-- Clic-drag → translateX/Y
+- Clic-drag → translateX/Y (clampe pour que la carte ne puisse pas sortir entierement du viewport : au moins 20% de la carte doit rester visible)
 - Ordre de transformation : `transform: translate(${x}px, ${y}px) scale(${s})`  (translate d'abord, puis scale)
 - Compensation des coordonnees souris : pour convertir les coordonnees ecran en coordonnees SVG, soustraire translateX/Y puis diviser par scale. Formule : `svgX = (clientX - containerLeft - translateX) / scale`
 - Zero dependance externe
@@ -201,7 +206,7 @@ Ce mecanisme donne un controle total sur chaque pays individuellement tout en re
 
 - Element `<text>` SVG positionne au centre du bounding box du `<path>` correspondant
 - Taille de police adaptative : `font-size` proportionnel a la surface du path (min 6px, max 14px en coordonnees SVG)
-- Pour les tres petits pays (bounding box < 20x20 en coordonnees SVG), le nom est affiche via un tooltip au hover plutot qu'en texte fixe sur la carte
+- Pour les tres petits pays (bounding box < 20x20 en coordonnees SVG), le nom est affiche via un `<div>` positionne en absolute au-dessus du curseur au hover (pas de SVG `<title>` car le style n'est pas controlable). Le tooltip disparait au mouseLeave.
 
 ## Contraintes
 
@@ -215,3 +220,5 @@ Ce mecanisme donne un controle total sur chaque pays individuellement tout en re
 - Pas de classement / leaderboard
 - Pas de mode hint / indice
 - Pas de responsive mobile (desktop-first, mobile en v2)
+- Pas d'accessibilite clavier avancee (navigation Tab entre pays, fleches pour pan/zoom)
+- Pas de tests framework (Vitest recommande, a configurer en implementation)
